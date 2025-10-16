@@ -4,7 +4,6 @@ void send(message_t message, mailbox_t* mailbox_ptr){
     switch (mailbox_ptr->flag)
     {
     case SHARED_MEM:
-        if (strcmp(message.msgText, "$")) printf("Sending message \"%s\"\n", message.msgText);
         clock_t start = clock();
         memcpy(mailbox_ptr->storage.shm_addr, &message, sizeof(message_t));
         clock_t end = clock();
@@ -54,13 +53,23 @@ int main(int argc, char *argv[]){
         printf("Error creating sem_recv\n");
         exit(-1);
     } 
-    int fd = shm_open("os_lab1_shm", O_CREAT | O_RDWR, 0666);
-    if (ftruncate(fd, sizeof(message_t)) == -1) {
-        fprintf(stderr, "Err ftruncate\n");
+    switch (mailbox.flag)
+    {
+    case SHARED_MEM:
+        int fd = shm_open("os_lab1_shm", O_CREAT | O_RDWR, 0666);
+        if (ftruncate(fd, sizeof(message_t)) == -1) {
+            fprintf(stderr, "Err ftruncate\n");
+            exit(-1);
+        }
+        mailbox.storage.shm_addr = (void*)mmap(NULL, sizeof(message_t), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+        close(fd);
+        break;
+    
+    default:
+        fprintf(stderr, "Err mailbox flag %d\n", mailbox.flag);
         exit(-1);
+        break;
     }
-    mailbox.storage.shm_addr = (void*)mmap(NULL, sizeof(message_t), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    close(fd);
 
     message_t msg; 
     for (char *line = strtok(buffer, "\n"); line[0] != '$'; line = strtok(NULL, "\n"))
@@ -70,6 +79,7 @@ int main(int argc, char *argv[]){
         if (msg.mType > 1023) msg.mType = 1023;
         msg.msgText[msg.mType] = '\0';
         strcpy(msg.msgText, line);
+        printf("Sending message \"%s\"\n", msg.msgText);
         send(msg, &mailbox);
         sem_post(sem_send);
     }
@@ -78,6 +88,7 @@ int main(int argc, char *argv[]){
     strcpy(msg.msgText, "$");
     send(msg, &mailbox);
     sem_post(sem_send);
+    printf("Time taken: %lf\n", mailbox.time);
     
         /*  TODO: 
         1) [x] Call send(message, &mailbox) according to the flow in slide 4
@@ -90,11 +101,19 @@ int main(int argc, char *argv[]){
         6) [x] If the message form the input file is EOF, send an exit message to the receiver.c
         7) [x] Print the total sending time and terminate the sender.c
     */
-
-    printf("Time taken: %lf\n", mailbox.time);
-
-    munmap(mailbox.storage.shm_addr, sizeof(message_t));
-    shm_unlink("os_lab1_shm");
+    
+    switch (mailbox.flag)
+    {
+    case SHARED_MEM:
+        munmap(mailbox.storage.shm_addr, sizeof(message_t));
+        shm_unlink("os_lab1_shm");
+        break;
+    
+    default:
+        fprintf(stderr, "Err mailbox flag %d\n", mailbox.flag);
+        exit(-1);
+        break;
+    }
     sem_close(sem_send);
     sem_close(sem_recv);
     sem_unlink("os_lab1_send");
