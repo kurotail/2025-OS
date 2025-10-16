@@ -1,31 +1,28 @@
 #include "sender.h"
 
 void send(message_t message, mailbox_t* mailbox_ptr){
-    clock_t start, end;
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
     switch (mailbox_ptr->flag)
     {
     case SHARED_MEM:
-        start = clock();
         memcpy(mailbox_ptr->storage.shm_addr, &message, sizeof(message_t));
-        end = clock();
-        mailbox_ptr->time += (double)(end-start) * 1e-3;
         break;
 
     case MSG_PASSING:
-        start = clock();
         int send_bytes = mq_send(mailbox_ptr->storage.msqid, (void*)&message, sizeof(message_t), 0);
         if (send_bytes == -1) {
             fprintf(stderr, "Err sending message, %d\n", errno);
             exit(-1);
         }
-        end = clock();
-        mailbox_ptr->time += (double)(end-start) * 1e-3;
         break;
     
     default:
         fprintf(stderr, "Err mailbox flag %d\n", mailbox_ptr->flag);
         exit(-1);
     }
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    mailbox_ptr->time += (end.tv_sec-start.tv_sec)+(end.tv_nsec-start.tv_nsec)*1e-9;
 }
  
 char *ftos(FILE *fp) {
