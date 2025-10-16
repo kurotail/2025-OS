@@ -1,12 +1,24 @@
 #include "sender.h"
 
 void send(message_t message, mailbox_t* mailbox_ptr){
+    clock_t start, end;
     switch (mailbox_ptr->flag)
     {
     case SHARED_MEM:
-        clock_t start = clock();
+        start = clock();
         memcpy(mailbox_ptr->storage.shm_addr, &message, sizeof(message_t));
-        clock_t end = clock();
+        end = clock();
+        mailbox_ptr->time += (double)(end-start) * 1e-3;
+        break;
+
+    case MSG_PASSING:
+        start = clock();
+        int send_bytes = mq_send(mailbox_ptr->storage.msqid, (void*)&message, sizeof(message_t), 0);
+        if (send_bytes == -1) {
+            fprintf(stderr, "Err sending message, %d\n", errno);
+            exit(-1);
+        }
+        end = clock();
         mailbox_ptr->time += (double)(end-start) * 1e-3;
         break;
     
@@ -45,24 +57,31 @@ int main(int argc, char *argv[]){
     mailbox.flag = atoi(argv[1]);
 
     sem_t *sem_send, *sem_recv;
-    if ( (sem_send = sem_open("os_lab1_send", O_CREAT, 0666, 0)) == SEM_FAILED) {
+    if ( (sem_send = sem_open(SEM_SEND, O_CREAT, 0666, 0)) == SEM_FAILED) {
         printf("Error creating sem_send\n");
         exit(-1);
     } 
-    if ( (sem_recv = sem_open("os_lab1_recv", O_CREAT, 0666, 0)) == SEM_FAILED) {
+    if ( (sem_recv = sem_open(SEM_RECV, O_CREAT, 0666, 0)) == SEM_FAILED) {
         printf("Error creating sem_recv\n");
         exit(-1);
     } 
     switch (mailbox.flag)
     {
     case SHARED_MEM:
-        int fd = shm_open("os_lab1_shm", O_CREAT | O_RDWR, 0666);
+        int fd = shm_open(SHM, O_CREAT | O_RDWR, 0666);
         if (ftruncate(fd, sizeof(message_t)) == -1) {
             fprintf(stderr, "Err ftruncate\n");
             exit(-1);
         }
         mailbox.storage.shm_addr = (void*)mmap(NULL, sizeof(message_t), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
         close(fd);
+        break;
+
+    case MSG_PASSING:
+        if (-1 == (mailbox.storage.msqid = mq_open(MQ, O_RDWR | O_CREAT, 0666, &MQ_ATTR))) {
+            printf("Error opening message queue\n");
+            exit(-1);
+        }
         break;
     
     default:
@@ -76,9 +95,9 @@ int main(int argc, char *argv[]){
     {
         sem_wait(sem_recv);
         msg.mType = strlen(line);
-        if (msg.mType > 1023) msg.mType = 1023;
-        msg.msgText[msg.mType] = '\0';
+        if (msg.mType > TEXT_LEN_MAX) msg.mType = TEXT_LEN_MAX;
         strcpy(msg.msgText, line);
+        msg.msgText[msg.mType-1] = '\0';
         printf("Sending message \"%s\"\n", msg.msgText);
         send(msg, &mailbox);
         sem_post(sem_send);
@@ -89,24 +108,17 @@ int main(int argc, char *argv[]){
     send(msg, &mailbox);
     sem_post(sem_send);
     printf("Time taken: %lf\n", mailbox.time);
-    
-        /*  TODO: 
-        1) [x] Call send(message, &mailbox) according to the flow in slide 4
-        2) [x] Measure the total sending time
-        3) [x] Get the mechanism and the input file from command line arguments
-            • e.g. ./sender 1 input.txt
-                    (1 for Message Passing, 2 for Shared Memory)
-        4) [x] Get the messages to be sent from the input file
-        5) [x] Print information on the console according to the output format
-        6) [x] If the message form the input file is EOF, send an exit message to the receiver.c
-        7) [x] Print the total sending time and terminate the sender.c
-    */
+    sem_wait(sem_recv);
     
     switch (mailbox.flag)
     {
     case SHARED_MEM:
         munmap(mailbox.storage.shm_addr, sizeof(message_t));
-        shm_unlink("os_lab1_shm");
+        shm_unlink(SHM);
+        break;
+    
+    case MSG_PASSING:
+        mq_close(mailbox.storage.msqid);
         break;
     
     default:

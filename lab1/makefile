@@ -19,7 +19,7 @@ $(BINARY2): $(SOURCE2) $(patsubst %.c, %.h, $(SOURCE2))
 clean:
 	rm -f $(BINARY1) $(BINARY2)
 
-MODE := 2
+MODE := 1
 INPUT_FILE := ./input.txt
 send: $(BINARY1)
 	@./$(BINARY1) $(MODE) $(INPUT_FILE)
