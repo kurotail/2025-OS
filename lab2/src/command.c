@@ -33,6 +33,19 @@ char *read_line()
 	return buffer;
 }
 
+struct cmd_node *_new_cmd_node(int argc) {
+    struct cmd_node *node = (struct cmd_node *)malloc(sizeof(struct cmd_node));
+	node->args      = (char **)malloc(argc * sizeof(char *));
+	node->length    = 0;
+	node->next  	= NULL;
+	node->in_file 	= NULL;
+	node->out_file 	= NULL;
+	node->in       	= 0;
+	node->out 		= 1;
+	for (int i = 0; i < argc; ++i)node->args[i] = NULL;
+	return node;
+}
+
 /**
  * @brief Parse the user's command
  * 
@@ -44,28 +57,14 @@ struct cmd *split_line(char *line)
 {
 	int args_length = 10;
     struct cmd *new_cmd = (struct cmd *)malloc(sizeof(struct cmd));
-    new_cmd->head = (struct cmd_node *)malloc(sizeof(struct cmd_node));
-    new_cmd->head->args = (char **)malloc(args_length * sizeof(char *));
-	for (int i = 0; i < args_length; ++i)
-		new_cmd->head->args[i] = NULL;
-    new_cmd->head->length = 0;
-    new_cmd->head->next = NULL;
+    new_cmd->head = _new_cmd_node(args_length);
 	new_cmd->pipe_num = 0;
 
 	struct cmd_node *temp = new_cmd->head;
-	temp->in_file 	= NULL;
-	temp->out_file 	= NULL;
-	temp->in       	= 0;
-	temp->out 		= 1;
     char *token = strtok(line, " ");
     while (token != NULL) {
         if (token[0] == '|') {
-            struct cmd_node *new_pipe = (struct cmd_node *)malloc(sizeof(struct cmd_node));
-			new_pipe->args = (char **)malloc(args_length * sizeof(char *));
-			for (int i = 0; i < args_length; ++i)
-				new_pipe->args[i] = NULL;
-			new_pipe->length = 0;
-			new_pipe->next = NULL;
+            struct cmd_node *new_pipe = _new_cmd_node(args_length);
 			temp->next = new_pipe;
 			temp = new_pipe;
         } else if (token[0] == '<') {

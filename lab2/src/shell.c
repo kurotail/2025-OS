@@ -20,7 +20,51 @@
  * 
  */
 void redirection(struct cmd_node *p){
-	
+    // Handle input redirection from file ( < )
+    if (p->in_file != NULL) {
+        int fd_in = open(p->in_file, O_RDONLY);
+        if (fd_in < 0) {
+            perror("open input file");
+            exit(1);
+        }
+        if (dup2(fd_in, STDIN_FILENO) < 0) {
+            perror("dup2 input");
+            close(fd_in);
+            exit(1);
+        }
+        close(fd_in);
+    }
+    // Handle input redirection from pipe
+    else if (p->in != STDIN_FILENO) {
+        if (dup2(p->in, STDIN_FILENO) < 0) {
+            perror("dup2 pipe input");
+            exit(1);
+        }
+        close(p->in);
+    }
+
+    // Handle output redirection to file ( > )
+    if (p->out_file != NULL) {
+        int fd_out = open(p->out_file, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+        if (fd_out < 0) {
+            perror("open output file");
+            exit(1);
+        }
+        if (dup2(fd_out, STDOUT_FILENO) < 0) {
+            perror("dup2 output");
+            close(fd_out);
+            exit(1);
+        }
+        close(fd_out);
+    }
+    // Handle output redirection to pipe
+    else if (p->out != STDOUT_FILENO) {
+        if (dup2(p->out, STDOUT_FILENO) < 0) {
+            perror("dup2 pipe output");
+            exit(1);
+        }
+        close(p->out);
+    }
 }
 // ===============================================================
 
@@ -46,7 +90,10 @@ int spawn_proc(struct cmd_node *p)
 		int status;
 		wait(&status);
 	} else {
+		redirection(p);
 		execvp(p->args[0], p->args);
+		perror("execvp");
+		exit(1);
 	}
   	return 1;
 }
@@ -64,7 +111,68 @@ int spawn_proc(struct cmd_node *p)
  */
 int fork_cmd_node(struct cmd *cmd)
 {
-	return 1;
+    struct cmd_node *curr = cmd->head;
+    int prev_pipe_read = STDIN_FILENO;  // 第一個命令從 stdin 讀取
+    pid_t pid;
+    
+    // 遍歷所有 cmd_node
+    while (curr != NULL) {
+        int pipefd[2];
+        
+        // 如果不是最後一個命令，創建 pipe
+        if (curr->next != NULL) {
+            if (pipe(pipefd) < 0) {
+                perror("pipe");
+                return 0;
+            }
+        }
+        
+        pid = fork();
+        if (pid < 0) {
+            perror("fork");
+            return 0;
+        }
+        
+        if (pid == 0) {
+            // 設定輸入：從前一個 pipe 或 stdin 讀取
+            if (prev_pipe_read != STDIN_FILENO) {
+                curr->in = prev_pipe_read;
+            }
+            
+            // 設定輸出：寫到下一個 pipe 或 stdout
+            if (curr->next != NULL) {
+                curr->out = pipefd[1];
+                close(pipefd[0]);  // child 不需要 pipe 的讀端
+            }
+            redirection(curr);
+            int status = searchBuiltInCommand(curr);
+            if (status != -1) {
+                execBuiltInCommand(status, curr);
+                exit(0);
+            } else {
+                // External command
+                execvp(curr->args[0], curr->args);
+                perror("execvp");
+                exit(1);
+            }
+        } else {
+            // 關閉已使用完的 pipe 讀端
+            if (prev_pipe_read != STDIN_FILENO) {
+                close(prev_pipe_read);
+            }
+            
+            // 如果創建了新的 pipe，關閉寫端並保存讀端
+            if (curr->next != NULL) {
+                close(pipefd[1]);  // parent 不需要 pipe 的寫端
+                prev_pipe_read = pipefd[0];  // 保存給下一個命令使用
+            }
+            
+            curr = curr->next;
+        }
+    }
+    
+    while (wait(NULL) > 0);    
+    return 1;
 }
 // ===============================================================
 
@@ -87,7 +195,7 @@ void shell()
 			status = searchBuiltInCommand(temp);
 			if (status != -1){
 				int in = dup(STDIN_FILENO), out = dup(STDOUT_FILENO);
-				if( in == -1 | out == -1)
+				if( in == -1 || out == -1)
 					perror("dup");
 				redirection(temp);
 				status = execBuiltInCommand(status,temp);
