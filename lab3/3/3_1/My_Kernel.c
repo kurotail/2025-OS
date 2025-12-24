@@ -16,9 +16,27 @@ static ssize_t Mywrite(struct file *fileptr, const char __user *ubuf, size_t buf
 
 
 static ssize_t Myread(struct file *fileptr, char __user *ubuf, size_t buffer_len, loff_t *offset){
-    /*Your code here*/
+    int len = 0;
+    struct task_struct *task;
+    if (*offset > 0) {
+        return 0;
+    }
+    memset(buf, 0, BUFSIZE);
+    rcu_read_lock();
+    for_each_thread(current, task) {
+        len += snprintf(buf + len, BUFSIZE - len, 
+                        "PID: %d, TID: %d, Prio: %d, State: %ld\n", 
+                        task->tgid, task->pid, task->prio, task->__state);
+        
+        if (len >= BUFSIZE) break;
+    }
+    rcu_read_unlock();
+    if (copy_to_user(ubuf, buf, len)) {
+        return -EFAULT;
+    }
 
-    /****************/
+    *offset += len;
+    return len;
 }
 
 static struct proc_ops Myops = {
