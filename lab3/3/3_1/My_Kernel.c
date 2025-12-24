@@ -31,9 +31,7 @@ static ssize_t Myread(struct file *fileptr, char __user *ubuf, size_t buffer_len
         if (len >= BUFSIZE) break;
     }
     rcu_read_unlock();
-    if (copy_to_user(ubuf, buf, len)) {
-        return -EFAULT;
-    }
+    copy_to_user(ubuf, buf, len);
 
     *offset += len;
     return len;
