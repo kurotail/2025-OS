@@ -22,16 +22,15 @@ static ssize_t Myread(struct file *fileptr, char __user *ubuf, size_t buffer_len
         return 0;
     }
     memset(buf, 0, BUFSIZE);
-    rcu_read_lock();
-    for_each_thread(current, task) {
+    for_each_thread(current, task)  {
+        if (task->pid == task->tgid) continue;
         len += snprintf(buf + len, BUFSIZE - len, 
-                        "PID: %d, TID: %d, Prio: %d, State: %ld\n", 
+                        "PID: %d, TID: %d, Prio: %d, State: %d\n", 
                         task->tgid, task->pid, task->prio, task->__state);
         
         if (len >= BUFSIZE) break;
     }
-    rcu_read_unlock();
-    copy_to_user(ubuf, buf, len);
+    if (copy_to_user(ubuf, buf, len)) return -1;
 
     *offset += len;
     return len;
@@ -49,6 +48,7 @@ static int My_Kernel_Init(void){
 }
 
 static void My_Kernel_Exit(void){
+    remove_proc_entry(procfs_name, NULL);
     pr_info("My kernel says GOODBYE");
 }
 
