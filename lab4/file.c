@@ -66,20 +66,25 @@ static ssize_t osfs_write(struct file *filp, const char __user *buf, size_t len,
     void *data_block;
     ssize_t bytes_written;
     int ret;
+    uint32_t blocks = len / BLOCK_SIZE + (len%BLOCK_SIZE? 1:0);
 
     // Step2: Check if a data block has been allocated; if not, allocate one
     if (osfs_inode->i_blocks == 0) {
-        ret = osfs_alloc_data_block(sb_info, &osfs_inode->i_block);
+        ret = osfs_alloc_data_block(sb_info, &osfs_inode->i_block, blocks);
         if (ret) {
-            pr_err("osfs_write: Failed to allocate data block\n");
+            pr_err("osfs_write: Failed to allocate %u data block\n", blocks);
             return ret;
         }
-        osfs_inode->i_blocks = 1;
+        osfs_inode->i_blocks = blocks;
+    } else {
+        if (*ppos + len > osfs_inode->i_blocks*BLOCK_SIZE)
+            len = osfs_inode->i_blocks*BLOCK_SIZE - *ppos;
     }
+    pr_info("osfs_write: %u blocks allocated\n", blocks);
 
     // Step3: Limit the write length to fit within one data block
-    if (*ppos + len > BLOCK_SIZE)
-        len = BLOCK_SIZE - *ppos;
+    // if (*ppos + len > BLOCK_SIZE)
+    //     len = BLOCK_SIZE - *ppos;
 
     // Step4: Write data from user space to the data block
     data_block = sb_info->data_blocks + osfs_inode->i_block * BLOCK_SIZE + *ppos;
@@ -105,30 +110,12 @@ static ssize_t osfs_write(struct file *filp, const char __user *buf, size_t len,
     return bytes_written;
 }
 
-static int osfs_open(struct inode *inode, struct file *filp)
-{
-    struct osfs_inode *osfs_inode = inode->i_private;
-    
-    pr_info("osfs_open: Opening file inode %lu with flags 0x%x\n", inode->i_ino, filp->f_flags);
-    
-    // Handle O_TRUNC flag - truncate file to zero length
-    if (filp->f_flags & O_TRUNC) {
-        pr_info("osfs_open: Truncating file inode %lu\n", inode->i_ino);
-        osfs_inode->i_size = 0;
-        inode->i_size = 0;
-        mark_inode_dirty(inode);
-    }
-    
-    return generic_file_open(inode, filp);
-}
-
 /**
  * Struct: osfs_file_operations
  * Description: Defines the file operations for regular files in osfs.
  */
 const struct file_operations osfs_file_operations = {
     .owner = THIS_MODULE,
-    .open = osfs_open,
     .read = osfs_read,
     .write = osfs_write,
     .llseek = default_llseek,

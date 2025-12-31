@@ -183,7 +183,7 @@ struct inode *osfs_new_inode(const struct inode *dir, umode_t mode)
     inode->i_private = osfs_inode;
 
     /* Allocate data block */
-    ret = osfs_alloc_data_block(sb_info, &osfs_inode->i_block);
+    ret = osfs_alloc_data_block(sb_info, &osfs_inode->i_block, osfs_inode->i_blocks);
     if (ret) {
         pr_err("osfs_new_inode: Failed to allocate data block\n");
         iput(inode);

@@ -108,14 +108,18 @@ struct inode *osfs_iget(struct super_block *sb, unsigned long ino)
  *   - 0 on successful allocation.
  *   - -ENOSPC if no free data block is available.
  */
-int osfs_alloc_data_block(struct osfs_sb_info *sb_info, uint32_t *block_no)
+int osfs_alloc_data_block(struct osfs_sb_info *sb_info, uint32_t *block_no, uint32_t blocks)
 {
     uint32_t i;
+    uint32_t b = 0;
 
     for (i = 0; i < sb_info->block_count; i++) {
-        if (!test_bit(i, sb_info->block_bitmap)) {
-            set_bit(i, sb_info->block_bitmap);
-            sb_info->nr_free_blocks--;
+        if (!test_bit(i, sb_info->block_bitmap)) b++; 
+        else b = 0;
+
+        if (b >= blocks) {
+            for (uint32_t j=0;j<blocks;j++) set_bit(i-j, sb_info->block_bitmap);
+            sb_info->nr_free_blocks -= blocks;
             *block_no = i;
             return 0;
         }

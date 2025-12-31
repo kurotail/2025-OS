@@ -72,7 +72,7 @@ struct osfs_inode {
 struct inode *osfs_iget(struct super_block *sb, unsigned long ino);
 struct osfs_inode *osfs_get_osfs_inode(struct super_block *sb, uint32_t ino);
 int osfs_get_free_inode(struct osfs_sb_info *sb_info);
-int osfs_alloc_data_block(struct osfs_sb_info *sb_info, uint32_t *block_no);
+int osfs_alloc_data_block(struct osfs_sb_info *sb_info, uint32_t *block_no, uint32_t blocks);
 int osfs_fill_super(struct super_block *sb, void *data, int silent);
 struct inode *osfs_new_inode(const struct inode *dir, umode_t mode);
 void osfs_free_data_block(struct osfs_sb_info *sb_info, uint32_t block_no);
